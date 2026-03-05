@@ -1,0 +1,10 @@
+{
+  "name": "devflowhub-agent-runtime",
+  "version": "1.0.0",
+  "description": "Execution agent that runs inside the workspace container",
+  "type": "commonjs",
+  "main": "run-agent.js",
+  "dependencies": {
+    "openai": "^4.52.0"
+  }
+}

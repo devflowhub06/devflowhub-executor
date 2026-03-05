@@ -78,6 +78,8 @@ Executor responds immediately with `{ status: "starting", previewUrl }`; executi
 - [Fly.io](docs/DOCKER_SETUP.md) — Docker setup and agent image build/push.
 - [Railway](docs/RAILWAY_SETUP.md) — Deploy for API + status page (agent won’t start).
 - [DigitalOcean Droplet](docs/DROPLET_SETUP.md) — **Use this for full execution** (agent container runs).
+- [Replit-like roadmap](docs/REPLIT_LIKE_ROADMAP.md) — What’s done vs missing, and next steps for Replit-level behavior.
+- [Step-by-step: Replit-like execution](docs/STEP_BY_STEP_REPLIT_LIKE.md) — Do everything in order (build, push, Droplet, firewall, test).
 
 ## Docker setup (install + build agent image)
 

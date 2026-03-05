@@ -78,21 +78,24 @@ So the executor can run `docker run` on the host:
 docker run -d \
   --name devflowhub-executor \
   -p 8080:8080 \
+  -p 3000:3000 \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -e EXECUTOR_PUBLIC_URL=http://YOUR_DROPLET_IP:8080 \
   -e AGENT_IMAGE=YOUR_DOCKERHUB_USERNAME/agent-runtime:latest \
+  -e OPENAI_API_KEY=your-openai-api-key \
   --restart unless-stopped \
   devflowhub-executor:latest
 ```
 
 - Replace `YOUR_DROPLET_IP` with the Droplet’s public IP (or your domain, e.g. `https://executor.yourdomain.com`).
 - Replace `YOUR_DOCKERHUB_USERNAME/agent-runtime:latest` if you use a different agent image.
+- **OPENAI_API_KEY** is required so the agent container can call the LLM to build the app. Set it to your OpenAI API key (or leave unset to skip the agent loop; the container will still start and show a placeholder).
 - For HTTPS with a domain, put a reverse proxy (e.g. Caddy/nginx) in front and set `EXECUTOR_PUBLIC_URL=https://executor.yourdomain.com`.
 
-### 5. Open port 8080
+### 5. Open ports 8080 and 3000
 
-- DigitalOcean: **Networking** → **Firewall** → create a rule: Inbound TCP **8080** (or only from your Vercel IP if you prefer).
-- Or in the Droplet creation flow, add a firewall rule for port 8080.
+- DigitalOcean: **Networking** → **Firewall** → add Inbound rules: TCP **8080** (executor API) and TCP **3000** (live app preview from the agent container).
+- Or in the Droplet creation flow, add firewall rules for 8080 and 3000.
 
 ### 6. Point Vercel at the executor
 
