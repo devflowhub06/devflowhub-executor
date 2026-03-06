@@ -123,11 +123,11 @@ On the Droplet, the executor must pass **OPENAI_API_KEY** into the agent contain
    - `YOUR_DOCKERHUB_USERNAME` → only if you're using Docker Hub and a custom image name; otherwise use `devflowhub/agent-runtime:latest` and omit the `-e AGENT_IMAGE=...` line or keep it as below.
 
    ```bash
-   docker run -d \
-     --name devflowhub-executor \
-     -p 8080:8080 \
-     -p 3000:3000 \
-     -v /var/run/docker.sock:/var/run/docker.sock \
+# Only map 8080 for the executor; port 3000 is for the agent container it spawns.
+docker run -d \
+  --name devflowhub-executor \
+  -p 8080:8080 \
+  -v /var/run/docker.sock:/var/run/docker.sock \
      -e EXECUTOR_PUBLIC_URL=http://68.183.83.22:8080 \
      -e AGENT_IMAGE=devflowhub/agent-runtime:latest \
      -e OPENAI_API_KEY=YOUR_OPENAI_API_KEY \

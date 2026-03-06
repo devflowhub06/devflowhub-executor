@@ -30,6 +30,7 @@ EXECUTION RULES:
 8. Do NOT run npm run dev or npm start yourself; only run npm install, npx create-*, npm run build, etc. The runtime will start the dev server after you finish.
 9. The preview server will listen on port 3000.
 10. Log every action in real time.
+11. ASSETS: Do not reference images or files you do not create (e.g. /logo.png). For logos or icons use inline SVG, emoji, or text so nothing 404s. If you add an img src, the file must exist in the workspace and be written by you.
 
 You have two tools:
 - write_file: path (relative to /workspace), content (string). Create or overwrite files.

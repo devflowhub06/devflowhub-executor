@@ -75,10 +75,10 @@ docker pull YOUR_DOCKERHUB_USERNAME/devflowhub-executor:latest
 So the executor can run `docker run` on the host:
 
 ```bash
+# Do NOT use -p 3000:3000 here; port 3000 is for the agent container the executor spawns.
 docker run -d \
   --name devflowhub-executor \
   -p 8080:8080 \
-  -p 3000:3000 \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -e EXECUTOR_PUBLIC_URL=http://YOUR_DROPLET_IP:8080 \
   -e AGENT_IMAGE=YOUR_DOCKERHUB_USERNAME/agent-runtime:latest \
@@ -92,10 +92,12 @@ docker run -d \
 - **OPENAI_API_KEY** is required so the agent container can call the LLM to build the app. Set it to your OpenAI API key (or leave unset to skip the agent loop; the container will still start and show a placeholder).
 - For HTTPS with a domain, put a reverse proxy (e.g. Caddy/nginx) in front and set `EXECUTOR_PUBLIC_URL=https://executor.yourdomain.com`.
 
-### 5. Open ports 8080 and 3000
+### 5. Open ports 8080 and app port range
 
-- DigitalOcean: **Networking** → **Firewall** → add Inbound rules: TCP **8080** (executor API) and TCP **3000** (live app preview from the agent container).
-- Or in the Droplet creation flow, add firewall rules for 8080 and 3000.
+- DigitalOcean: **Networking** → **Firewall** → add Inbound rules:
+  - TCP **8080** (executor API and logs).
+  - TCP **3000–3099** (live app preview; each execution gets its own port for parallel runs).
+- Or in the Droplet creation flow, add rules for 8080 and 3000–3099.
 
 ### 6. Point Vercel at the executor
 
@@ -158,3 +160,121 @@ Same as Option A: open port 8080, set `EXECUTOR_URL` on Vercel to `http://YOUR_D
 | 4 | Set `EXECUTOR_URL` on Vercel to the Droplet URL and redeploy. |
 
 After this, the agent container will start when you trigger execution from the DevFlowHub UI.
+
+---
+
+## Redeploy executor (step-by-step after code changes)
+
+When you pull new executor code (e.g. dynamic ports, container name length fix), follow these steps.
+
+**0. (If you changed code locally) Push executor to GitHub**
+
+From your **local** machine (in the repo that has the executor code):
+
+```bash
+cd path/to/devflowhub-executor
+git add -A && git commit -m "Executor updates" && git push origin main
+```
+
+So the Droplet can pull the latest code. Skip if the code is already on `devflowhub06/devflowhub-executor` main.
+
+**1. SSH into the Droplet**
+
+```bash
+ssh root@YOUR_DROPLET_IP
+```
+
+When asked "Are you sure you want to continue connecting (yes/no)?", type **yes**, then enter your password if prompted.
+
+**2. Go to the executor repo and pull latest**
+
+```bash
+cd ~/devflowhub-executor
+git pull origin main
+```
+
+If the repo is not there yet:
+
+```bash
+cd ~
+git clone https://github.com/devflowhub06/devflowhub-executor.git
+cd devflowhub-executor
+```
+
+**3. Rebuild the executor image (no cache)**
+
+Use **`--no-cache`** so Docker does not reuse old layers and the new `index.js` (dynamic ports) is in the image:
+
+```bash
+docker build --no-cache -t devflowhub-executor:latest .
+```
+
+Wait until the build finishes without errors.
+
+**4. Stop and remove the old executor container**
+
+```bash
+docker stop devflowhub-executor
+docker rm devflowhub-executor
+```
+
+**4b. (Optional) Free port 3000 if an old agent is still running**
+
+If you had "port is already allocated" before, stop the old agent container:
+
+```bash
+docker ps -a --filter "name=exec-"
+docker stop exec-cmmdanudi0002ju043ufoong7
+```
+
+Use the actual container name from the list. Then new runs can use 3000 or the next free port.
+
+**5. Start the new executor container**
+
+Replace `YOUR_DROPLET_IP` and `YOUR_OPENAI_API_KEY` with your values:
+
+```bash
+docker run -d \
+  --name devflowhub-executor \
+  -p 8080:8080 \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  -e EXECUTOR_PUBLIC_URL=http://YOUR_DROPLET_IP:8080 \
+  -e AGENT_IMAGE=abhinay6319/agent-runtime:latest \
+  -e OPENAI_API_KEY=YOUR_OPENAI_API_KEY \
+  --restart unless-stopped \
+  devflowhub-executor:latest
+```
+
+**6. Check that it’s running**
+
+```bash
+docker ps
+curl -s http://localhost:8080/health
+docker logs devflowhub-executor 2>&1 | tail -5
+```
+
+You should see: the container in `docker ps`; `{"status":"ok","service":"devflowhub-executor"}` from curl; and in the logs the line **`[executor] Dynamic ports enabled: 3000-3099 (each execution gets its own port)`**. If you see that line, the new code is running. If not, rebuild with `docker build --no-cache`.
+
+**7. If executions still show "No such container"**
+
+The agent container was never created — `docker run` failed. Do this on the Droplet:
+
+**Step 1 — See why it failed**
+
+```bash
+docker logs devflowhub-executor 2>&1 | tail -40
+```
+
+Look for a line like `[executor] Failed to spawn container for <id>:` and the line right after it (the real error).
+
+**Step 2 — Fix based on the error**
+
+| Error | What to do |
+|-------|------------|
+| **port is already allocated** | Another run is still using that port. List agent containers: `docker ps -a --filter "name=exec-"`. Stop the one you don’t need: `docker stop <name_or_id>`. Then start a **new** execution from DevFlowHub (don’t reuse the same execution). |
+| **No such image** / **pull access denied** | Pull the image: `docker pull abhinay6319/agent-runtime:latest`. If you use a private image, run `docker login` first. |
+| **invalid container name** | Redeploy the executor (steps 2–5 above) so you have the latest code (container name length fix). |
+
+**Step 3 — Try again**
+
+Start a **new** execution from the DevFlowHub UI (new prompt or new project). Do not retry the same execution ID; that container name is already used or failed.

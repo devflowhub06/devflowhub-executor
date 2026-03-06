@@ -1,6 +1,6 @@
 # DevFlowHub Agent Runtime — container that runs the Execution Agent and builds/serves the app
 # Spawned by the executor. Reads PROMPT, runs LLM + tools (write_file, run_command), then npm run dev.
-FROM node:18-slim
+FROM node:20-slim
 
 WORKDIR /workspace
 

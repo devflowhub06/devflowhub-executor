@@ -60,7 +60,9 @@ Executor responds immediately with `{ status: "starting", previewUrl }`; executi
 |--------|------|------|--------------|
 | GET | `/health` | — | Liveness for Fly |
 | POST | `/execute` | `projectId`, `executionId`, `prompt`, `userId?`, `credits?` | Start execution (async) |
-| GET | `/logs?executionId=` | — | Placeholder for log streaming |
+| GET | `/logs?executionId=` | — | Container logs (HTML or JSON) |
+
+**Parallel executions:** Each run gets a unique host port (3000, 3001, …) so multiple users can run at once. Set `APP_PORT_MIN` / `APP_PORT_MAX` (default 3000–3099) on the executor if you need more than 100 concurrent runs.
 
 ## Where to deploy (link/status vs real execution)
 

@@ -15,6 +15,22 @@ const PROMPT = process.env.PROMPT || ''
 const EXECUTION_ID = process.env.EXECUTION_ID || 'unknown'
 const WORKSPACE = '/workspace'
 
+/** Find app root: /workspace/package.json or /workspace/<subdir>/package.json (e.g. create-next-app my-portfolio). */
+function findAppRoot() {
+  const rootPkg = path.join(WORKSPACE, 'package.json')
+  if (fs.existsSync(rootPkg)) return WORKSPACE
+  try {
+    const entries = fs.readdirSync(WORKSPACE, { withFileTypes: true })
+    for (const e of entries) {
+      if (e.isDirectory()) {
+        const subPkg = path.join(WORKSPACE, e.name, 'package.json')
+        if (fs.existsSync(subPkg)) return path.join(WORKSPACE, e.name)
+      }
+    }
+  } catch (_) {}
+  return null
+}
+
 function escapeHtml(s) {
   return String(s)
     .replace(/&/g, '&amp;')
@@ -52,12 +68,12 @@ async function main() {
   const openaiKey = process.env.OPENAI_API_KEY || ''
   await runAgentLoop(PROMPT, openaiKey)
 
-  const pkgPath = path.join(WORKSPACE, 'package.json')
-  if (fs.existsSync(pkgPath)) {
-    log('Starting app with npm run dev')
+  const appRoot = findAppRoot()
+  if (appRoot) {
+    log(`Starting app from ${appRoot} with npm run dev`)
     try {
       execSync('npm run dev', {
-        cwd: WORKSPACE,
+        cwd: appRoot,
         stdio: 'inherit',
         env: { ...process.env, PORT: String(PORT) },
       })
@@ -65,7 +81,7 @@ async function main() {
       log(`npm run dev failed, trying npm start: ${err.message}`)
       try {
         execSync('npm start', {
-          cwd: WORKSPACE,
+          cwd: appRoot,
           stdio: 'inherit',
           env: { ...process.env, PORT: String(PORT) },
         })
