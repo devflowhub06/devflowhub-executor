@@ -28,9 +28,12 @@ EXECUTION RULES:
 6. Install all required dependencies using run_command (e.g. npm install).
 7. Run tests and fix failures automatically.
 8. Do NOT run npm run dev or npm start yourself; only run npm install, npx create-*, npm run build, etc. The runtime will start the dev server after you finish.
-9. The preview server will listen on port 3000.
-10. Log every action in real time.
-11. ASSETS: Do not reference images or files you do not create (e.g. /logo.png). For logos or icons use inline SVG, emoji, or text so nothing 404s. If you add an img src, the file must exist in the workspace and be written by you.
+9. REQUIRED: In package.json always add a "dev" and/or "start" script that runs the app (e.g. dev server or static server). The app must listen on port 3000 (use PORT from env or --port 3000). Without these scripts the preview cannot start.
+10. For simple static sites (landing page, portfolio, single-page): use plain HTML/CSS/JS and a static server. Add scripts like "dev": "npx serve . -p 3000" and "start": "npx serve . -p 3000". Do NOT use webpack for simple static sites—it often fails in this environment.
+11. Only run one-off commands (npm install, npm run build, npx webpack). Do NOT run long-running or watch commands (e.g. webpack --watch); they will timeout. The runtime will start the dev server after you finish.
+12. The preview server will listen on port 3000.
+13. Log every action in real time.
+14. ASSETS: Do not reference images or files you do not create (e.g. /logo.png). For logos or icons use inline SVG, emoji, or text so nothing 404s. If you add an img src, the file must exist in the workspace and be written by you.
 
 You have two tools:
 - write_file: path (relative to /workspace), content (string). Create or overwrite files.
@@ -41,6 +44,7 @@ Logs must represent REAL execution. After each tool use, briefly state what you 
 
 FAILURE HANDLING:
 - Diagnose errors automatically. Retry with run_command if install or build fails.
+- If a build (e.g. webpack) fails repeatedly, switch to a simpler approach (e.g. static HTML + npx serve) instead of retrying the same failing build.
 - Never stop unless execution is impossible.
 
 When all files are written, dependencies installed, and build (if any) has run successfully, respond with a short final message that includes "Ready for preview server" and do not call more tools.`

@@ -15,7 +15,7 @@ const PROMPT = process.env.PROMPT || ''
 const EXECUTION_ID = process.env.EXECUTION_ID || 'unknown'
 const WORKSPACE = '/workspace'
 
-/** Find app root: /workspace/package.json or /workspace/<subdir>/package.json (e.g. create-next-app my-portfolio). */
+/** Find app root: /workspace, one level down, or two levels down (e.g. create-next-app my-portfolio or nested app). */
 function findAppRoot() {
   const rootPkg = path.join(WORKSPACE, 'package.json')
   if (fs.existsSync(rootPkg)) return WORKSPACE
@@ -23,8 +23,17 @@ function findAppRoot() {
     const entries = fs.readdirSync(WORKSPACE, { withFileTypes: true })
     for (const e of entries) {
       if (e.isDirectory()) {
-        const subPkg = path.join(WORKSPACE, e.name, 'package.json')
-        if (fs.existsSync(subPkg)) return path.join(WORKSPACE, e.name)
+        const subDir = path.join(WORKSPACE, e.name)
+        const subPkg = path.join(subDir, 'package.json')
+        if (fs.existsSync(subPkg)) return subDir
+        // One more level (e.g. workspace/landing/frontend/package.json)
+        const subEntries = fs.readdirSync(subDir, { withFileTypes: true })
+        for (const e2 of subEntries) {
+          if (e2.isDirectory()) {
+            const sub2Pkg = path.join(subDir, e2.name, 'package.json')
+            if (fs.existsSync(sub2Pkg)) return path.join(subDir, e2.name)
+          }
+        }
       }
     }
   } catch (_) {}
@@ -39,8 +48,8 @@ function escapeHtml(s) {
     .replace(/"/g, '&quot;')
 }
 
-function startPlaceholderServer() {
-  log('No package.json in workspace; starting placeholder server')
+function startPlaceholderServer(reason) {
+  log(reason || 'No package.json in workspace; starting placeholder server')
   const server = http.createServer((req, res) => {
     res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' })
     res.end(`
@@ -86,8 +95,17 @@ async function main() {
           env: { ...process.env, PORT: String(PORT) },
         })
       } catch (e) {
-        log(`npm start failed: ${e.message}; starting placeholder`)
-        startPlaceholderServer()
+        log(`npm start failed: ${e.message}; trying npx serve as fallback`)
+        try {
+          execSync(`npx --yes serve . -p ${PORT}`, {
+            cwd: appRoot,
+            stdio: 'inherit',
+            env: { ...process.env, PORT: String(PORT) },
+          })
+        } catch (serveErr) {
+          log(`npx serve failed: ${serveErr.message}; starting placeholder`)
+          startPlaceholderServer("Package.json has no 'dev' or 'start' script; starting placeholder server")
+        }
       }
     }
   } else {
