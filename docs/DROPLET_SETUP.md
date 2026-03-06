@@ -92,12 +92,21 @@ docker run -d \
 - **OPENAI_API_KEY** is required so the agent container can call the LLM to build the app. Set it to your OpenAI API key (or leave unset to skip the agent loop; the container will still start and show a placeholder).
 - For HTTPS with a domain, put a reverse proxy (e.g. Caddy/nginx) in front and set `EXECUTOR_PUBLIC_URL=https://executor.yourdomain.com`.
 
-### 5. Open ports 8080 and app port range
+### 5. Open ports 8080 and app port range (required for dynamic ports)
 
-- DigitalOcean: **Networking** → **Firewall** → add Inbound rules:
+- **DigitalOcean Cloud Firewall:** **Networking** → **Firewall** → add Inbound rules:
   - TCP **8080** (executor API and logs).
-  - TCP **3000–3099** (live app preview; each execution gets its own port for parallel runs).
-- Or in the Droplet creation flow, add rules for 8080 and 3000–3099.
+  - TCP **3000–3099** (live app preview; each execution gets its own port, e.g. 3001, 3002).
+- **Droplet local firewall (ufw):** If you use ufw on the Droplet, open the range:
+
+```bash
+sudo ufw allow 8080/tcp
+sudo ufw allow 3000:3099/tcp
+sudo ufw reload
+sudo ufw status
+```
+
+If only 3000 and 8080 are open, preview links like `http://YOUR_IP:3001` will time out (ERR_CONNECTION_TIMED_OUT).
 
 ### 6. Point Vercel at the executor
 

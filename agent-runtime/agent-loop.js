@@ -36,8 +36,8 @@ EXECUTION RULES:
 14. ASSETS: Do not reference images or files you do not create (e.g. /logo.png). For logos or icons use inline SVG, emoji, or text so nothing 404s. If you add an img src, the file must exist in the workspace and be written by you.
 
 You have two tools:
-- write_file: path (relative to /workspace), content (string). Create or overwrite files.
-- run_command: command (string). Run in /workspace. Use for npm install, npx create-next-app, npm run dev, etc.
+- write_file: path (relative to /workspace), content (string). Create or overwrite files. For .json files (especially package.json) use valid JSON only: real newlines, no literal backslash-n; invalid JSON will break npm install.
+- run_command: command (string). Run in /workspace. Use for npm install, npx create-next-app, npm run build, etc.
 
 LOG FORMAT (MANDATORY):
 Logs must represent REAL execution. After each tool use, briefly state what you did.
@@ -62,11 +62,31 @@ function safePath(relativePath) {
   return resolved
 }
 
+/** Normalize JSON content: LLM often sends literal \\n instead of real newlines, causing EJSONPARSE. */
+function normalizeJsonContent(content) {
+  if (typeof content !== 'string') return content
+  let s = content.trim()
+  // If it already parses, return pretty-printed so we write valid JSON
+  try {
+    return JSON.stringify(JSON.parse(s), null, 2)
+  } catch (_) {}
+  // Common LLM mistake: literal backslash-n instead of newline (e.g. "{\n  \"name\"")
+  if (s.includes('\\n') || s.includes('\\r')) {
+    s = s.replace(/\\r\\n/g, '\n').replace(/\\n/g, '\n').replace(/\\r/g, '\n')
+    try {
+      return JSON.stringify(JSON.parse(s), null, 2)
+    } catch (__) {}
+  }
+  return content
+}
+
 function writeFile(args) {
   const { path: filePath, content } = args
   const fullPath = safePath(filePath)
   fs.mkdirSync(path.dirname(fullPath), { recursive: true })
-  fs.writeFileSync(fullPath, content, 'utf8')
+  const isJson = filePath === 'package.json' || filePath.endsWith('.json')
+  const toWrite = isJson ? normalizeJsonContent(content) : content
+  fs.writeFileSync(fullPath, toWrite, 'utf8')
   log(`Wrote ${filePath}`)
   return { success: true, path: filePath }
 }
