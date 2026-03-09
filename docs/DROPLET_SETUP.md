@@ -115,6 +115,50 @@ In your DevFlowHub Vercel project:
 - **Environment variable:** `EXECUTOR_URL=http://YOUR_DROPLET_IP:8080` (or `https://...` if you set up TLS).
 - Redeploy the frontend so the start API uses this URL.
 
+### 7. (Optional) HTTPS for the executor — remove "Not secure" in the browser
+
+Use a reverse proxy (e.g. **Caddy**) on the droplet so the executor API and logs are served over HTTPS. App preview URLs (ports 3000–3099) can stay HTTP unless you add more proxy rules.
+
+**Prerequisites:** A domain (or subdomain) pointing to your Droplet IP, e.g. `exec.yourdomain.com` → `YOUR_DROPLET_IP`.
+
+**Steps on the Droplet:**
+
+1. **Install Caddy** (auto HTTPS with Let’s Encrypt):
+
+   ```bash
+   apt install -y debian-keyring debian-archive-keyring apt-transport-https curl
+   curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' | gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
+   curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' | tee /etc/apt/sources.list.d/caddy-stable.list
+   apt update && apt install -y caddy
+   ```
+
+2. **Create Caddyfile** (replace `exec.yourdomain.com` with your domain):
+
+   ```bash
+   nano /etc/caddy/Caddyfile
+   ```
+
+   Contents:
+
+   ```
+   exec.yourdomain.com {
+       reverse_proxy localhost:8080
+   }
+   ```
+
+3. **Reload Caddy:**
+
+   ```bash
+   systemctl reload caddy
+   ```
+
+4. **Update env and Vercel:**
+   - On the droplet, restart the executor container with:
+     `EXECUTOR_PUBLIC_URL=https://exec.yourdomain.com`
+   - In Vercel, set `EXECUTOR_URL=https://exec.yourdomain.com` and redeploy.
+
+After this, opening the executor logs or stream URL in the browser will use HTTPS. App preview links (e.g. `http://YOUR_IP:3001`) remain HTTP unless you add a separate Caddy server block or path-based proxy for the app port range.
+
 ---
 
 ## Option B: Run Node on the host (no executor container)
@@ -210,15 +254,21 @@ git clone https://github.com/devflowhub06/devflowhub-executor.git
 cd devflowhub-executor
 ```
 
-**3. Rebuild the executor image (no cache)**
+**3. Rebuild the executor and agent-runtime images (no cache)**
 
-Use **`--no-cache`** so Docker does not reuse old layers and the new `index.js` (dynamic ports) is in the image:
+The executor spawns containers from **AGENT_IMAGE** (e.g. `abhinay6319/agent-runtime:latest`). So you must rebuild both so agent fixes (e.g. package.json JSON normalization) take effect.
 
 ```bash
+# Executor API
 docker build --no-cache -t devflowhub-executor:latest .
+
+# Agent runtime (run-agent.js, agent-loop.js) — used when you start an execution
+cd agent-runtime
+docker build --no-cache -t abhinay6319/agent-runtime:latest .
+cd ..
 ```
 
-Wait until the build finishes without errors.
+Wait until both builds finish without errors.
 
 **4. Stop and remove the old executor container**
 

@@ -33,7 +33,7 @@ EXECUTION RULES:
 11. Only run one-off commands (npm install, npm run build, npx webpack). Do NOT run long-running or watch commands (e.g. webpack --watch); they will timeout. The runtime will start the dev server after you finish.
 12. The preview server will listen on port 3000.
 13. Log every action in real time.
-14. ASSETS: Do not reference images or files you do not create (e.g. /logo.png). For logos or icons use inline SVG, emoji, or text so nothing 404s. If you add an img src, the file must exist in the workspace and be written by you.
+14. ASSETS: Do not reference images or files you do not create (e.g. /logo.png). For logos or icons use inline SVG, emoji, or text so nothing 404s. If you add an img src, the file must exist in the workspace and be written by you. For web apps, add a favicon to avoid 404: e.g. in index.html use <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><text y='24' font-size='24'>🚀</text></svg>" /> or write a small favicon.ico file.
 
 You have two tools:
 - write_file: path (relative to /workspace), content (string). Create or overwrite files. For .json files (especially package.json) use valid JSON only: real newlines, no literal backslash-n; invalid JSON will break npm install.
@@ -62,7 +62,7 @@ function safePath(relativePath) {
   return resolved
 }
 
-/** Normalize JSON content: LLM often sends literal \\n instead of real newlines, causing EJSONPARSE. */
+/** Normalize JSON content: LLM often sends literal backslash-n instead of real newlines, causing EJSONPARSE. */
 function normalizeJsonContent(content) {
   if (typeof content !== 'string') return content
   let s = content.trim()
@@ -70,11 +70,19 @@ function normalizeJsonContent(content) {
   try {
     return JSON.stringify(JSON.parse(s), null, 2)
   } catch (_) {}
-  // Common LLM mistake: literal backslash-n instead of newline (e.g. "{\n  \"name\"")
-  if (s.includes('\\n') || s.includes('\\r')) {
-    s = s.replace(/\\r\\n/g, '\n').replace(/\\n/g, '\n').replace(/\\r/g, '\n')
+  // EJSONPARSE at position 1 = literal backslash after "{". Unescape literal \n \r \t (two-char sequence).
+  const backslash = String.fromCharCode(0x5C)
+  const hasLiteralEscapes = (s.length >= 2 && s[1] === backslash) || s.includes(backslash + 'n') || s.includes(backslash + 'r')
+  if (hasLiteralEscapes) {
+    const unescaped = s
+      .split(backslash + 'r' + backslash + 'n').join('\n')
+      .split(backslash + 'n').join('\n')
+      .split(backslash + 'r').join('\n')
+      .split(backslash + 't').join('\t')
     try {
-      return JSON.stringify(JSON.parse(s), null, 2)
+      const parsed = JSON.parse(unescaped)
+      log('Normalized invalid JSON (literal \\n etc.) to valid JSON for npm')
+      return JSON.stringify(parsed, null, 2)
     } catch (__) {}
   }
   return content

@@ -12,6 +12,11 @@ git pull origin main
 echo "Building executor image (no cache)..."
 docker build --no-cache -t devflowhub-executor:latest .
 
+echo "Building agent-runtime image (no cache) — required for agent fixes (e.g. package.json)..."
+cd agent-runtime
+docker build --no-cache -t abhinay6319/agent-runtime:latest .
+cd ..
+
 echo "Stopping and removing old container..."
 docker stop devflowhub-executor 2>/dev/null || true
 docker rm devflowhub-executor 2>/dev/null || true

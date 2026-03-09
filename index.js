@@ -6,7 +6,7 @@
 
 import express from 'express'
 import cors from 'cors'
-import { exec, execSync } from 'child_process'
+import { exec, execSync, spawn } from 'child_process'
 
 const app = express()
 const PORT = process.env.PORT || 8080
@@ -83,6 +83,7 @@ app.post('/execute', async (req, res) => {
     ? `https://${process.env.FLY_APP_NAME}.fly.dev`
     : (process.env.EXECUTOR_PUBLIC_URL || 'https://devflowhub-executor.fly.dev')
   const previewUrl = `${baseUrl.replace(/\/$/, '')}/logs?executionId=${safeExecutionId}`
+  const logsStreamUrl = `${baseUrl.replace(/\/$/, '')}/logs/stream?executionId=${safeExecutionId}`
   const host = baseUrl.replace(/^https?:\/\//, '').split('/')[0].split(':')[0]
   const protocol = baseUrl.startsWith('https') ? 'https' : 'http'
   const appPreviewUrl = `${protocol}://${host}:${appPort}`
@@ -93,6 +94,7 @@ app.post('/execute', async (req, res) => {
     status: 'starting',
     executionId: safeExecutionId,
     previewUrl,
+    logsStreamUrl,
     appPreviewUrl,
     message: 'Execution started on executor. Container spawning.',
   })
@@ -118,6 +120,57 @@ app.post('/execute', async (req, res) => {
       return
     }
     console.log(`[executor] Spawned container for ${safeExecutionId} on port ${appPort}:`, stdout?.trim())
+  })
+})
+
+/**
+ * GET /logs/stream?executionId=xxx
+ * Server-Sent Events stream of docker logs -f. For live logs in the UI without refreshing.
+ */
+app.get('/logs/stream', (req, res) => {
+  const { executionId } = req.query
+  if (!executionId) {
+    return res.status(400).json({ error: 'Missing executionId' })
+  }
+  const safeId = String(executionId).replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 58)
+  const containerName = `exec-${safeId}`
+
+  res.setHeader('Content-Type', 'text/event-stream')
+  res.setHeader('Cache-Control', 'no-cache')
+  res.setHeader('Connection', 'keep-alive')
+  res.setHeader('Access-Control-Allow-Origin', '*')
+  res.flushHeaders()
+
+  const sendLine = (line) => {
+    if (line && typeof line === 'string') {
+      res.write(`data: ${line.replace(/\n/g, '\ndata: ')}\n\n`)
+    }
+  }
+
+  const child = spawn('docker', ['logs', '-f', '--tail', '0', containerName], {
+    stdio: ['ignore', 'pipe', 'pipe'],
+  })
+
+  child.stdout.on('data', (chunk) => {
+    const s = chunk.toString('utf8')
+    s.split('\n').forEach(sendLine)
+  })
+  child.stderr.on('data', (chunk) => {
+    const s = chunk.toString('utf8')
+    s.split('\n').forEach(sendLine)
+  })
+
+  child.on('error', (err) => {
+    sendLine(`[executor] stream error: ${err.message}`)
+  })
+  child.on('exit', (code) => {
+    sendLine(`[executor] container ended (code ${code})`)
+    res.end()
+  })
+
+  req.on('close', () => {
+    child.kill('SIGTERM')
+    res.end()
   })
 })
 

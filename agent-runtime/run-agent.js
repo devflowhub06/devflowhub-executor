@@ -48,9 +48,16 @@ function escapeHtml(s) {
     .replace(/"/g, '&quot;')
 }
 
+const FAVICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect width="32" height="32" fill="#f59e0b"/><text x="16" y="22" font-size="18" text-anchor="middle" fill="white">D</text></svg>'
+
 function startPlaceholderServer(reason) {
   log(reason || 'No package.json in workspace; starting placeholder server')
   const server = http.createServer((req, res) => {
+    if (req.url === '/favicon.ico') {
+      res.writeHead(200, { 'Content-Type': 'image/svg+xml' })
+      res.end(FAVICON_SVG)
+      return
+    }
     res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' })
     res.end(`
 <!DOCTYPE html>

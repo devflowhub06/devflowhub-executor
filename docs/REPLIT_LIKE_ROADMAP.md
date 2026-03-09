@@ -1,6 +1,6 @@
-# Replit-like roadmap — what’s done vs what’s missing
+# Replit-like roadmap — what’s done vs what’s left
 
-This doc maps the “two-mode + executor” plan to the current codebase and lists concrete next steps so DevFlowHub behaves like Replit (cause → effect → visibility).
+This doc maps the “two-mode + executor” plan to the current codebase and lists what’s done and what’s optional next for DevFlowHub to feel like Replit (cause → effect → visibility).
 
 ---
 
@@ -8,73 +8,49 @@ This doc maps the “two-mode + executor” plan to the current codebase and lis
 
 | Plan item | Status | Where it lives |
 |-----------|--------|----------------|
-| **Two modes: Planning (Vercel) vs Real Execution (Fly/DO)** | Done | `system-prompt.ts` (FALLBACK vs REAL_EXECUTION), `PlannerService` (file-only on Vercel), `ExecutionOrchestrator` (skips docker/commands on Vercel) |
-| **Backend switch: vercel → Planning prompt, else Execution prompt** | Done | `getSystemPrompt()`, `isRealExecutionEnvironment()` in `system-prompt.ts` |
-| **Planning prompt (Vercel-safe, no Docker)** | Done | `FALLBACK_PROMPT` |
-| **Real Execution prompt (Replit-level)** | Done (text only) | `REAL_EXECUTION_PROMPT` — used when env is “real”; **not yet used inside container** |
-| **Executor on Fly / Railway / DO** | Done | Executor on DigitalOcean Droplet, Docker socket, `EXECUTOR_URL` on Vercel |
-| **Executor spawns agent container** | Done | `docker run` with `agent-runtime` image, `PROMPT` + `EXECUTION_ID` passed |
-| **Agent container runs Real Execution Agent** | Missing | `agent-runtime/run-agent.js` is a **placeholder** HTTP server. It does not run an LLM loop, create files, or run commands. |
-| **Cause → effect → visibility** | Partial | Agent activity feed ✅, credits ✅, execution narrative ✅. **Missing:** real-time logs from container, real app preview (iframe or link to app port). |
+| **Two modes: Planning (Vercel) vs Real Execution (Fly/DO)** | Done | `system-prompt.ts` (FALLBACK vs REAL_EXECUTION), PlannerService, ExecutionOrchestrator |
+| **Planning prompt (Vercel-safe)** | Done | FALLBACK_PROMPT |
+| **Real Execution prompt** | Done | `agent-runtime/agent-loop.js` — REAL_EXECUTION_PROMPT |
+| **Executor on Droplet** | Done | DigitalOcean Droplet, Docker socket, `EXECUTOR_URL` on Vercel |
+| **Executor spawns agent container** | Done | `docker run` with `agent-runtime` image, PROMPT + EXECUTION_ID + OPENAI_API_KEY |
+| **Agent container runs Real Execution Agent** | Done | `agent-runtime/run-agent.js` + `agent-loop.js`: LLM loop, write_file, run_command, npm install, start app (npm run dev / npx serve), stdout logs |
+| **Dynamic app ports (parallel runs)** | Done | Executor picks free port 3000–3099 per execution, `appPreviewUrl` per run |
+| **Real app preview URL** | Done | UI shows “Open app” → `http://DROPLET_IP:PORT` (e.g. :3001, :3006) |
+| **Container logs page** | Done | “Open logs” → executor `/logs?executionId=...` (refresh to see latest) |
+| **package.json / JSON fixes** | Done | Agent prompt + normalizeJsonContent in agent-loop.js so npm install works |
+| **Cause → effect → visibility** | Done | Agent builds → app runs → logs page + app link. Optional: embedded iframe, log streaming. |
 
 ---
 
-## Why it doesn’t “feel like Replit” yet
+## What’s done (Replit-like core)
 
-1. **Execution Agent never runs in the container**  
-   When you click Start, Vercel POSTs to the executor → executor runs `docker run ... agent-runtime`. The container only starts a small HTTP server that shows a placeholder. It does **not**:
-   - Call the LLM with `REAL_EXECUTION_PROMPT` + user prompt  
-   - Create files in `/workspace`  
-   - Run `npm install` / `npm run dev`  
-   - Start the real app
+1. **Real Execution Agent in the container**  
+   Start from UI → executor spawns container → agent runs LLM with write_file + run_command, creates files, runs `npm install`, then starts the app (`npm run dev` or `npx serve`). Logs go to stdout → visible on executor logs page.
 
-2. **No live logs from the container**  
-   The “Open preview” link goes to the executor’s `/logs` page (static status). There is no WebSocket or SSE streaming `docker logs` from the agent container into the UI.
+2. **Executor passes OPENAI_API_KEY** into the agent container so the agent can call the LLM.
 
-3. **Preview URL is status, not the app**  
-   Preview points to `executor/logs?executionId=...`, not to the app running inside the container (e.g. port 3000). Showing the real app would require exposing the container’s port (e.g. map host:3000 or dynamic ports) and optionally a reverse proxy.
+3. **Per-execution app URL**  
+   Each run gets its own port (3000–3099). UI returns `appPreviewUrl` (e.g. `http://68.183.83.22:3006`). User can “Open app” to see the built app.
+
+4. **Static-site friendly**  
+   Agent uses plain HTML + `npx serve` for simple landing pages; JSON normalization fixes malformed package.json so npm install succeeds.
 
 ---
 
-## Next steps (in order)
+## Optional improvements (more Replit-like)
 
-### 1. Real Execution Agent inside the container (critical)
-
-- **Where:** `devflowhub-executor/agent-runtime/`
-- **What:** Replace the placeholder with an agent that:
-  - Reads `PROMPT` and `OPENAI_API_KEY` (executor must pass the key into the container).
-  - Uses `REAL_EXECUTION_PROMPT` as system message and runs an LLM loop with tools:
-    - `write_file`: create/update files under `/workspace`
-    - `run_command`: run safe commands (e.g. `npm install`, `npm run build`, `npx create-next-app`) in `/workspace`
-  - Logs every action to stdout (so `docker logs` captures it).
-  - After building, runs the app (e.g. `npm run dev` or `npm start`) so the container serves the app on port 3000.
-- **Result:** One “Start” from the UI leads to a real build and a running app inside the container.
-
-### 2. Executor passes `OPENAI_API_KEY` into the container
-
-- **Where:** `devflowhub-executor/index.js` (the `docker run` command).
-- **What:** Add `-e OPENAI_API_KEY=...` when spawning the agent container (e.g. from `process.env.OPENAI_API_KEY` on the executor). Keep the key only in the executor’s env and in the container; do not expose it to the client.
-- **Result:** The agent inside the container can call the LLM.
-
-### 3. (Optional) Log streaming
-
-- **Where:** Executor (e.g. new endpoint or upgrade `/logs`) + optional UI in DevFlowHub.
-- **What:** Executor runs `docker logs -f exec-<id>` and streams output via SSE or WebSocket to the browser. UI shows a live log stream in the Preview / Agent Activity area.
-- **Result:** “Cause → effect → visibility” feels like Replit’s console.
-
-### 4. (Later) Real app preview URL
-
-- **Where:** Executor + Docker port mapping (and optionally reverse proxy).
-- **What:** The executor already maps `-p 3000:3000` for the agent container so a single running execution serves the app at `http://DROPLET_IP:3000`. Only one execution can use port 3000 at a time; for multiple concurrent executions you’d need dynamic ports (3001, 3002…) and a way to route “Open preview” to the right port.
-- **Result:** For one execution at a time, open `http://YOUR_DROPLET_IP:3000` after the agent finishes to see the real app. “Open preview” in the UI still points to the executor `/logs` page; you can later change it to open the app URL when available.
+| Item | Effort | Description |
+|------|--------|-------------|
+| **Embedded app preview (iframe)** | Small | In the execution Preview tab, embed the app in an iframe when `appPreviewUrl` is set so the user sees the app inside DevFlowHub without opening a new tab. Fallback to “Open app” link if iframe is blocked (e.g. X-Frame-Options). |
+| **Log streaming (SSE/WebSocket)** | Medium | Executor endpoint that streams `docker logs -f exec-<id>` to the browser; UI shows live logs in the execution workspace instead of “refresh to see latest.” |
+| **Files / Terminal when on executor** | Medium | Today, Files and Terminal tabs are driven by streamed actions (Vercel). On executor, actions aren’t streamed, so those tabs stay empty. Options: show “Open logs to see files/commands” hint, or add executor API to list container files / tail logs and surface in UI. |
+| **HTTPS for executor** | Small | Put Caddy/nginx in front of the droplet and set `EXECUTOR_PUBLIC_URL=https://...` to remove “Not secure” in the browser. |
 
 ---
 
 ## Summary
 
-- **Done:** Two-mode architecture, planning on Vercel, executor on Droplet, container spawn, prompts and backend switch.
-- **Missing for Replit-like:** A **real Execution Agent inside the agent-runtime container** (LLM + `write_file` + `run_command` + start app + stdout logs), executor passing **OPENAI_API_KEY** into the container, and optionally **log streaming** and **real app preview URL**.
+- **Done:** Two-mode architecture, real Execution Agent in container, dynamic ports, app preview URL, logs page, JSON normalization, static-site flow. One “Start” → real build → running app → “Open logs” + “Open app.”
+- **Optional next:** Embedded app iframe in Preview tab, log streaming, Files/Terminal hints or APIs when on executor, HTTPS for executor.
 
-Implementing step 1 (and 2) is the single biggest step to make DevFlowHub behave like Replit.
-
-**Ready to do it?** Follow [STEP_BY_STEP_REPLIT_LIKE.md](STEP_BY_STEP_REPLIT_LIKE.md) from start to finish.
+For step-by-step deployment, see [STEP_BY_STEP_REPLIT_LIKE.md](STEP_BY_STEP_REPLIT_LIKE.md) and [DROPLET_SETUP.md](DROPLET_SETUP.md).
